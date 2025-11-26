@@ -1,0 +1,28 @@
+# Thermal Lens v0.1 - Requirements
+
+# Core ML
+torch>=2.0.0
+torchvision>=0.15.0
+numpy>=1.24.0
+pillow>=10.0.0
+
+# Computer Vision
+opencv-python>=4.8.0
+scipy>=1.11.0
+
+# ONNX
+onnx>=1.14.0
+onnxruntime>=1.15.0
+
+# Training & Utils
+tqdm>=4.66.0
+matplotlib>=3.7.0
+
+# Web App
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+python-multipart>=0.0.6
+
+# Optional: For better performance
+# onnxruntime-gpu>=1.15.0  # If using GPU
+
