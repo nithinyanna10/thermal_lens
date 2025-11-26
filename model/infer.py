@@ -56,7 +56,12 @@ def predict_thermal(model, rgb_tensor, device='cpu'):
 def apply_inferno_colormap(thermal_map):
     """Apply inferno colormap to thermal prediction"""
     import matplotlib.cm as cm
-    inferno = cm.get_cmap('inferno')
+    try:
+        # Try new API first (matplotlib 3.7+)
+        inferno = cm.colormaps['inferno']
+    except (AttributeError, KeyError):
+        # Fallback to old API
+        inferno = cm.get_cmap('inferno')
     thermal_colored = inferno(thermal_map)[:, :, :3]  # Remove alpha channel
     return (thermal_colored * 255).astype(np.uint8)
 

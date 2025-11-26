@@ -41,7 +41,12 @@ def preprocess_frame(frame, image_size=256):
 
 def apply_inferno_colormap(thermal_map):
     """Apply inferno colormap to thermal prediction"""
-    inferno = cm.get_cmap('inferno')
+    try:
+        # Try new API first (matplotlib 3.7+)
+        inferno = cm.colormaps['inferno']
+    except (AttributeError, KeyError):
+        # Fallback to old API
+        inferno = cm.get_cmap('inferno')
     thermal_colored = inferno(thermal_map)[:, :, :3]  # Remove alpha
     return (thermal_colored * 255).astype(np.uint8)
 

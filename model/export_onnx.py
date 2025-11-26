@@ -29,7 +29,7 @@ def export_to_onnx(checkpoint_path, output_path, image_size=256, device='cpu'):
         dummy_input,
         output_path,
         export_params=True,
-        opset_version=11,
+        opset_version=18,  # Updated to 18 for better compatibility
         do_constant_folding=True,
         input_names=['rgb_input'],
         output_names=['thermal_output'],

@@ -72,7 +72,8 @@ def generate_dummy_dataset(output_rgb_dir, output_thermal_dir, num_images=100, i
         center = image_size // 2
         mask = (x - center)**2 + (y - center)**2
         mask = mask / mask.max()
-        rgb = (rgb * (1 - mask * 0.3)).astype(np.uint8)
+        mask_3d = np.stack([mask, mask, mask], axis=2)  # Broadcast to 3 channels
+        rgb = (rgb * (1 - mask_3d * 0.3)).astype(np.uint8)
         
         # Add some colored rectangles
         for _ in range(3):
