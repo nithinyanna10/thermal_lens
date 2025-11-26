@@ -4,6 +4,7 @@ Training script for RGB → Thermal UNet
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.data import DataLoader
 from torchvision import transforms
@@ -183,6 +184,5 @@ def main():
 
 
 if __name__ == "__main__":
-    import torch.nn.functional as F
     main()
 
