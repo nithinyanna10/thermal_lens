@@ -1,0 +1,54 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+.venv
+
+# PyTorch
+*.pth
+*.pt
+checkpoints/
+*.onnx
+
+# Data
+data/raw/
+data/processed/
+*.jpg
+*.jpeg
+*.png
+*.tif
+*.tiff
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# Model outputs
+outputs/
+results/
+thermal_frame_*.jpg
+
+# Node (for frontend)
+node_modules/
+npm-debug.log*
+
