@@ -15,8 +15,23 @@ import onnxruntime as ort  # For ONNX inference
 
 def load_onnx_model(onnx_path):
     """Load ONNX model for fast inference"""
-    session = ort.InferenceSession(onnx_path, providers=['CPUExecutionProvider'])
-    return session
+    import os
+    # Verify file exists
+    if not os.path.exists(onnx_path):
+        raise FileNotFoundError(f"ONNX model not found: {onnx_path}")
+    
+    # Use CPU provider for reliable inference
+    # CoreML can be added later if needed, but CPU works well
+    providers = ['CPUExecutionProvider']
+    
+    print(f"Loading ONNX model from {onnx_path}")
+    try:
+        session = ort.InferenceSession(onnx_path, providers=providers)
+        print(f"✅ Model loaded successfully")
+        return session
+    except Exception as e:
+        print(f"❌ Error loading model: {e}")
+        raise
 
 
 def preprocess_frame(frame, image_size=256):
@@ -93,8 +108,16 @@ def run_webcam_inference(onnx_path, camera_id=0, image_size=256, colormap='infer
     # Open webcam
     cap = cv2.VideoCapture(camera_id)
     if not cap.isOpened():
-        print(f"Error: Could not open camera {camera_id}")
+        print(f"❌ Error: Could not open camera {camera_id}")
+        print(f"💡 Try a different camera ID:")
+        print(f"   python test_camera.py 0")
+        print(f"   python test_camera.py 1")
         return
+    
+    # Set camera properties for better performance
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+    cap.set(cv2.CAP_PROP_FPS, 30)
     
     print("Starting webcam inference...")
     print("Press 'q' to quit, 's' to save frame")
@@ -116,14 +139,30 @@ def run_webcam_inference(onnx_path, camera_id=0, image_size=256, colormap='infer
             output = session.run(None, {input_name: frame_batch})
             thermal_pred = output[0][0, 0]  # Remove batch and channel dims
             
+            # Normalize and enhance contrast
+            # The model outputs are often in a narrow range, so we stretch them
+            thermal_min = thermal_pred.min()
+            thermal_max = thermal_pred.max()
+            
+            # Stretch to full range with percentile-based normalization for better contrast
+            p2 = np.percentile(thermal_pred, 2)
+            p98 = np.percentile(thermal_pred, 98)
+            
+            # Normalize using percentiles to enhance contrast
+            thermal_pred_normalized = (thermal_pred - p2) / (p98 - p2 + 1e-8)
+            thermal_pred_normalized = np.clip(thermal_pred_normalized, 0, 1)
+            
+            # Apply slight gamma correction to enhance visibility
+            thermal_pred_normalized = np.power(thermal_pred_normalized, 0.8)
+            
             # Apply colormap
             if colormap == 'inferno':
-                thermal_colored = apply_inferno_colormap(thermal_pred)
+                thermal_colored = apply_inferno_colormap(thermal_pred_normalized)
             elif colormap == 'hot':
-                thermal_gray = (thermal_pred * 255).astype(np.uint8)
+                thermal_gray = (thermal_pred_normalized * 255).astype(np.uint8)
                 thermal_colored = cv2.applyColorMap(thermal_gray, cv2.COLORMAP_HOT)
             else:
-                thermal_gray = (thermal_pred * 255).astype(np.uint8)
+                thermal_gray = (thermal_pred_normalized * 255).astype(np.uint8)
                 thermal_colored = cv2.cvtColor(thermal_gray, cv2.COLOR_GRAY2BGR)
             
             # Blend with original
