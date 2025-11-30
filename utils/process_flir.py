@@ -16,24 +16,71 @@ import argparse
 import shutil
 
 
+def load_flir_mapping(flir_dir):
+    """Load RGB to Thermal mapping from JSON file"""
+    mapping_file = os.path.join(flir_dir, 'rgb_to_thermal_vid_map.json')
+    if os.path.exists(mapping_file):
+        with open(mapping_file, 'r') as f:
+            return json.load(f)
+    return None
+
+
 def match_flir_pairs(flir_dir, output_rgb_dir, output_thermal_dir, max_pairs=8000):
     """
     Match FLIR RGB and Thermal image pairs
-    FLIR uses matching filenames in RGB/ and thermal_8_bit/ folders
+    FLIR ADAS v2 structure:
+    - images_rgb_train/data/
+    - images_thermal_train/data/
+    - images_rgb_val/data/
+    - images_thermal_val/data/
     """
-    rgb_dir = os.path.join(flir_dir, 'RGB')
-    thermal_dir = os.path.join(flir_dir, 'thermal_8_bit')
+    # Try FLIR ADAS v2 structure first
+    rgb_train_dir = os.path.join(flir_dir, 'images_rgb_train', 'data')
+    thermal_train_dir = os.path.join(flir_dir, 'images_thermal_train', 'data')
+    rgb_val_dir = os.path.join(flir_dir, 'images_rgb_val', 'data')
+    thermal_val_dir = os.path.join(flir_dir, 'images_thermal_val', 'data')
     
-    if not os.path.exists(rgb_dir):
-        raise FileNotFoundError(f"RGB directory not found: {rgb_dir}")
-    if not os.path.exists(thermal_dir):
-        raise FileNotFoundError(f"Thermal directory not found: {thermal_dir}")
+    # Fallback to old structure
+    if not os.path.exists(rgb_train_dir):
+        rgb_train_dir = os.path.join(flir_dir, 'RGB')
+        thermal_train_dir = os.path.join(flir_dir, 'thermal_8_bit')
+        rgb_val_dir = None
+        thermal_val_dir = None
     
-    # Get all RGB images
-    rgb_files = sorted([f for f in os.listdir(rgb_dir) 
-                       if f.lower().endswith(('.jpg', '.jpeg', '.png'))])
+    if not os.path.exists(rgb_train_dir):
+        raise FileNotFoundError(f"RGB directory not found: {rgb_train_dir}")
+    if not os.path.exists(thermal_train_dir):
+        raise FileNotFoundError(f"Thermal directory not found: {thermal_train_dir}")
     
-    print(f"Found {len(rgb_files)} RGB images")
+    # Load mapping if available (for video frames)
+    mapping = load_flir_mapping(flir_dir)
+    
+    # Get all RGB images from train and val
+    rgb_files = []
+    rgb_to_thermal_map = {}
+    
+    if os.path.exists(rgb_train_dir):
+        train_files = [f for f in os.listdir(rgb_train_dir) 
+                      if f.lower().endswith(('.jpg', '.jpeg', '.png'))]
+        rgb_files.extend(train_files)
+        print(f"Found {len(train_files)} RGB training images")
+    
+    if rgb_val_dir and os.path.exists(rgb_val_dir):
+        val_files = [f for f in os.listdir(rgb_val_dir) 
+                    if f.lower().endswith(('.jpg', '.jpeg', '.png'))]
+        rgb_files.extend(val_files)
+        print(f"Found {len(val_files)} RGB validation images")
+    
+    # Build mapping: for train/val images, filenames should match
+    # For video frames, use the mapping file
+    if mapping:
+        print(f"Loaded mapping file with {len(mapping)} entries")
+        for rgb_file in rgb_files:
+            if rgb_file in mapping:
+                rgb_to_thermal_map[rgb_file] = mapping[rgb_file]
+    
+    rgb_files = sorted(rgb_files)
+    print(f"Total: {len(rgb_files)} RGB images")
     
     # Create output directories
     os.makedirs(output_rgb_dir, exist_ok=True)
@@ -43,24 +90,58 @@ def match_flir_pairs(flir_dir, output_rgb_dir, output_thermal_dir, max_pairs=800
     skipped = 0
     
     for rgb_file in tqdm(rgb_files[:max_pairs], desc="Matching pairs"):
-        rgb_path = os.path.join(rgb_dir, rgb_file)
+        # Try train directory first
+        rgb_path = os.path.join(rgb_train_dir, rgb_file)
+        is_train = os.path.exists(rgb_path)
         
-        # Find corresponding thermal file (same name)
-        thermal_file = rgb_file
-        thermal_path = os.path.join(thermal_dir, thermal_file)
-        
-        # Try alternative names if exact match not found
-        if not os.path.exists(thermal_path):
-            base_name = os.path.splitext(rgb_file)[0]
-            for ext in ['.jpg', '.jpeg', '.png', '.tif', '.tiff']:
-                alt_path = os.path.join(thermal_dir, base_name + ext)
-                if os.path.exists(alt_path):
-                    thermal_path = alt_path
-                    thermal_file = os.path.basename(alt_path)
-                    break
-            else:
+        # If not in train, try val
+        if not is_train and rgb_val_dir:
+            rgb_path = os.path.join(rgb_val_dir, rgb_file)
+            if not os.path.exists(rgb_path):
                 skipped += 1
                 continue
+        
+        # Find corresponding thermal file
+        # First check if we have a mapping
+        thermal_file = rgb_file
+        if rgb_file in rgb_to_thermal_map:
+            thermal_file = rgb_to_thermal_map[rgb_file]
+        
+        # Try same filename first (for train/val images)
+        if is_train:
+            thermal_path = os.path.join(thermal_train_dir, thermal_file)
+        else:
+            thermal_path = os.path.join(thermal_val_dir, thermal_file) if thermal_val_dir else None
+        
+        # If not found, try same name in both directories
+        if not thermal_path or not os.path.exists(thermal_path):
+            # Try train directory
+            thermal_path = os.path.join(thermal_train_dir, thermal_file)
+            if not os.path.exists(thermal_path):
+                # Try val directory
+                if thermal_val_dir:
+                    thermal_path = os.path.join(thermal_val_dir, thermal_file)
+                if not os.path.exists(thermal_path):
+                    # Try with different extensions
+                    base_name = os.path.splitext(thermal_file)[0]
+                    found = False
+                    for ext in ['.jpg', '.jpeg', '.png', '.tif', '.tiff']:
+                        alt_path = os.path.join(thermal_train_dir, base_name + ext)
+                        if os.path.exists(alt_path):
+                            thermal_path = alt_path
+                            thermal_file = os.path.basename(alt_path)
+                            found = True
+                            break
+                        if thermal_val_dir:
+                            alt_path = os.path.join(thermal_val_dir, base_name + ext)
+                            if os.path.exists(alt_path):
+                                thermal_path = alt_path
+                                thermal_file = os.path.basename(alt_path)
+                                found = True
+                                break
+                    if not found:
+                        skipped += 1
+                        continue
         
         # Copy files to output directories
         output_rgb = os.path.join(output_rgb_dir, rgb_file)
